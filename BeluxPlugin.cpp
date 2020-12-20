@@ -14,8 +14,8 @@ using namespace EuroScopePlugIn;
 using boost::asio::ip::tcp;
 
 //API URL definitions
-const string GP_API_HOST = "api.beluxvacc.org/belux-gate-manager-api-develop";
-const string GP_API_ENDPOINT = "/get_gate";
+const string GP_API_HOST = "api.beluxvacc.org";
+const string GP_API_ENDPOINT = "/belux-gate-manager-api-develop/get_gate";
 
 // internal ID lists
 const int TAG_ITEM_GATE_ASGN = 1;
@@ -173,7 +173,6 @@ void BeluxPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget,
 }
 
 
-
 BeluxGatePlanner BeluxPlugin::GetAPIInfo(string callsign) {
     string data = "";
 
@@ -186,6 +185,12 @@ BeluxGatePlanner BeluxPlugin::GetAPIInfo(string callsign) {
         boost::asio::io_service io_service;
         boost::asio::ssl::context context(boost::asio::ssl::context::sslv23);
         boost::asio::ssl::stream<tcp::socket> ssock(io_service, context);
+
+        if (!SSL_set_tlsext_host_name(ssock.native_handle(), GP_API_HOST.c_str()))
+        {
+            boost::system::error_code ec{ static_cast<int>(::ERR_get_error()), boost::asio::error::get_ssl_category() };
+            throw boost::system::system_error{ ec };
+        }
 
         // Get a list of endpoints corresponding to the server name.
         tcp::resolver resolver(io_service);
