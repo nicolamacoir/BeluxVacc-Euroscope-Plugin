@@ -4,29 +4,17 @@
 #include <map>
 #include <set>
 #include <utility>
-#include <boost/asio.hpp>
-#include <boost/asio/ssl.hpp>
-
 
 using namespace std;
 using namespace EuroScopePlugIn;
 
 using boost::asio::ip::tcp;
 
-//API URL definitions
-const string GP_API_HOST = "api.beluxvacc.org";
-const string GP_API_ENDPOINT = "/belux-gate-manager-api-develop/get_gate";
-
 // internal ID lists
 const int TAG_ITEM_GATE_ASGN = 1;
 
 // Time (in seconds) before we request new information about this flight from the API.
 const int DATA_RETENTION_LENGTH = 30;
-
-//faked API responses.
-const string GP_API_REPLY_ERR_PREFIX = "[{\"gate\":\"\",\"assigned_to\":\"";
-const string GP_API_REPLY_EMPTY_PREFIX = "[{\"gate\":\"\",\"assigned_to\":\"";
-const string GP_API_REPLY_SUFFIX = "\"}]";
 
 map<string, BeluxGatePlanner> m_knownFlightInfo;
 
@@ -51,20 +39,22 @@ BeluxPlugin::BeluxPlugin(void) : CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY
     RegisterTagItemType("Assigned Gate", TAG_ITEM_GATE_ASGN);
 }
 
-BeluxPlugin::~BeluxPlugin() {}
+BeluxPlugin::~BeluxPlugin() {
+}
 
 void BeluxPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan) {
     string ICAO = FlightPlan.GetFlightPlanData().GetOrigin();
     string callsign = FlightPlan.GetCallsign();
 
-    //Only continue with airplanes that are departing from BELUX airports; and are on the ground; and are not moving
     if (beluxAirports.find(ICAO) == beluxAirports.end()                                          // IF Not found in belux airport list
-        || FlightPlan.GetCorrelatedRadarTarget().GetGS() > 5                                     // OR Ground speed > 5knots
-        || FlightPlan.GetCorrelatedRadarTarget().GetPosition().GetPressureAltitude() > 1500) {   // OR Altitude > 1500 feet
-        return;                                                                                  // THEN SKIP 
+        || !FlightPlan.IsValid() || !FlightPlan.GetCorrelatedRadarTarget().IsValid()             // OR flightplan has not been loaded/correleted correctly?
+        || FlightPlan.GetCorrelatedRadarTarget().GetGS() > 5                                     // OR moving: Ground speed > 5knots
+        || FlightPlan.GetCorrelatedRadarTarget().GetPosition().GetPressureAltitude() > 1500      // OR flying: Altitude > 1500 feet
+        || FlightPlan.GetCorrelatedRadarTarget().GetPosition().GetPressureAltitude() == 0) {     // OR altitude == 0 -> uncorrelated? alitude should never be zero
+        return;         // THEN SKIP 
     }
 
-    //Saftey check: only set CFL for 'new' callsigns
+    //Saftey check: only set CFL once
     if (knownCallsigns.find(callsign) == knownCallsigns.end()) {
         int CFL = 0;
         if (ICAO == "EBBR" || ICAO == "EBOS") {
@@ -130,12 +120,14 @@ void BeluxPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget,
     switch (ItemCode) {
     case TAG_ITEM_GATE_ASGN:
         string dest = FlightPlan.GetFlightPlanData().GetDestination();
-        if (dest != "EBBR") {
+
+        //Only continue and fetch gate when: flies to brussels AND i'm tracking the airplane OR i'm observing
+        if (dest != "EBBR" || (!FlightPlan.GetTrackingControllerIsMe() && ControllerMyself().IsController())) {
             return;
         }
 
-        //---Pre-API Info Gathering------
         string cs = FlightPlan.GetCallsign();
+        string ac = FlightPlan.GetFlightPlanData().GetAircraftInfo();
         BeluxGatePlanner res;
         if (m_knownFlightInfo.find(cs) != m_knownFlightInfo.end()) {
             //---Should we get new info?
@@ -148,45 +140,79 @@ void BeluxPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget,
             }
             else {
                 //---API Info Retrieval------
-                res = GetAPIInfo(cs);
+                string old = m_knownFlightInfo[cs].Gate;
+                res = GetGateInfo(cs,ac);
                 m_knownFlightInfo[cs] = res;
+
+                if (old != res.Gate && old != "" && res.Gate != "") {
+                    //---GATE Change detected------
+                    char buffer[70];
+                    sprintf_s(buffer, "FOR %s: %s ==> %s", cs.c_str(), old.c_str(), res.Gate.c_str());
+                    DisplayUserMessage("Belux Plugin", "GATE CHANGE", buffer, true, true, true, true, true);
+                    
+                    (*pColorCode) = EuroScopePlugIn::TAG_COLOR_RGB_DEFINED;
+                    (*pRGB) = RGB(255, 255, 0);                     
+                }
             }
         }
         else {
-            res = GetAPIInfo(cs);
+            //----Initial fetch------
+            res = GetGateInfo(cs,ac);
             m_knownFlightInfo[cs] = res;
         }
 
         //---API Info Verification------
         if (cs == res.Callsign) {
-            //// Put (new) gate into the ES UI.
+            //----- Put (new) gate into the ES UI.
             strcpy_s(sItemString, 8 , m_knownFlightInfo[cs].Gate.c_str());
-            if (FlightPlan.GetDistanceToDestination() < 15 && FlightPlan.GetCorrelatedRadarTarget().GetPosition().GetPressureAltitude() < 1500) {
+
+            //When closer than 15NM and below 3500ft, insert into OP_TEXT
+            if (FlightPlan.GetDistanceToDestination() < 15 && FlightPlan.GetCorrelatedRadarTarget().GetPosition().GetPressureAltitude() < 3500) {
                 FlightPlan.GetControllerAssignedData().SetScratchPadString(m_knownFlightInfo[cs].Gate.c_str());
             }
         }
         else {
-            // Invalid callsign?
             sItemString = "ERR";
         }
     }
 }
 
 
-BeluxGatePlanner BeluxPlugin::GetAPIInfo(string callsign) {
+BeluxGatePlanner BeluxPlugin::GetGateInfo(string callsign, string actype) {
+    const string host = "api.beluxvacc.org";
+    const string uri = "/belux-gate-manager-api-develop/get_gate_for_plugin/";
+
+    // Form the request.
+    std::stringstream request;
+    request << "POST " << uri << " HTTP/1.1\r\n";;
+    request << "Host: " << host << "\r\n";
+    request << "Content-Type: application/x-www-form-urlencoded\r\n";
+    request << "Content-Length: " << (18 + 4 + callsign.length() + actype.length()) << "\r\n\r\n";
+    request << "callsign=" << callsign << "\r\n";
+    request << "aircraft=" << actype << "\r\n";
+
+    string response = GetHttpsRequest(host, uri, request.str());
+    if (response == "HTTPS_ERROR") {
+        return BeluxGatePlanner("[{\"gate\":\"ERR\",\"assigned_to\":\"" + callsign + "\"}]");
+    }
+    else if (response == "[]") {
+        return BeluxGatePlanner("[{\"gate\":\"\",\"assigned_to\":\"" + callsign + "\"}]");
+    }
+    else {
+        return BeluxGatePlanner(response);
+    }
+}
+
+string BeluxPlugin::GetHttpsRequest(string host, string uri, string request_string) {
+
     string data = "";
-
-    // Which API endpoint?
-    string uri = GP_API_ENDPOINT;
-
-    //-Here be dragons.-------------------------
     try {
         // Initialize the asio service.
         boost::asio::io_service io_service;
         boost::asio::ssl::context context(boost::asio::ssl::context::sslv23);
         boost::asio::ssl::stream<tcp::socket> ssock(io_service, context);
 
-        if (!SSL_set_tlsext_host_name(ssock.native_handle(), GP_API_HOST.c_str()))
+        if (!SSL_set_tlsext_host_name(ssock.native_handle(), host.c_str()))
         {
             boost::system::error_code ec{ static_cast<int>(::ERR_get_error()), boost::asio::error::get_ssl_category() };
             throw boost::system::system_error{ ec };
@@ -194,28 +220,22 @@ BeluxGatePlanner BeluxPlugin::GetAPIInfo(string callsign) {
 
         // Get a list of endpoints corresponding to the server name.
         tcp::resolver resolver(io_service);
-        tcp::resolver::query query(GP_API_HOST, "https");
+        tcp::resolver::query query(host, "https");
         auto it = resolver.resolve(query);
-
         boost::asio::connect(ssock.lowest_layer(), it);
         ssock.handshake(boost::asio::ssl::stream_base::handshake_type::client);
 
-        // Form the request.
-        boost::asio::streambuf request;
-        ostream request_stream(&request);
-
-        request_stream << "POST " << uri << " HTTP/1.1\r\n";
-        request_stream << "Host: " << GP_API_HOST << "\r\n";
-        request_stream << "Content-Type: application/x-www-form-urlencoded\r\n";
-        request_stream << "Content-Length: "<< 9+ callsign.length() << "\r\n\r\n";
-        request_stream << "callsign=" << callsign << "\r\n";
 
         // Send the request.
+        boost::asio::streambuf request;
+        ostream request_stream(&request);
+        request_stream << request_string;
         boost::asio::write(ssock, request);
-        /*boost::asio::write(socket, request);*/
+   
         // Read the response line.
         boost::asio::streambuf response;
         boost::asio::read_until(ssock, response, "\r\n");
+
         // Check that response is OK.
         istream response_stream(&response);
         string http_version;
@@ -225,32 +245,28 @@ BeluxGatePlanner BeluxPlugin::GetAPIInfo(string callsign) {
         string status_message;
         getline(response_stream, status_message);
         if (!response_stream || http_version.substr(0, 5) != "HTTP/" || status_code != 200) {
-            return BeluxGatePlanner(GP_API_REPLY_ERR_PREFIX + callsign + GP_API_REPLY_SUFFIX);
+            return "HTTPS_ERROR";
         }
+
         // Read the response headers, which are terminated by a blank line.
         boost::asio::read_until(ssock, response, "\r\n\r\n");
-        // Process the response headers.
         string header;
         while (getline(response_stream, header) && header != "\r")
             continue;
+
         // Write whatever content we already have to output.
         if (response.size() > 0) {
             istream(&response) >> data;
         }
-        string dbgmsg = "received: " + data;
-        DisplayUserMessage("Belux Plugin", "Gate assigner", dbgmsg.c_str(), true, true, true, false, false);
-        if (data == "[]") {
-            return BeluxGatePlanner(GP_API_REPLY_EMPTY_PREFIX + callsign + GP_API_REPLY_SUFFIX);
-        }
-        //-End of dragons.--------------------------
+        //string dbgmsg = "received: " + data;
+        //DisplayUserMessage("Belux Plugin", "Gate assigner", dbgmsg.c_str(), true, true, true, false, false);
+  
+        return data;
     }
     catch (exception& e) {
-        DisplayUserMessage("Belux Plugin", "Gate planner", e.what(), true, true, true, false, false);
-        return BeluxGatePlanner(GP_API_REPLY_ERR_PREFIX + callsign + GP_API_REPLY_SUFFIX);
+        DisplayUserMessage("Belux Plugin", "HTTPS error", e.what(), true, true, true, false, false);
+        return "HTTPS_ERROR";
     }
-
-    // Parse data
-    return BeluxGatePlanner(data);
 }
 
 BeluxPlugin* gpMyPlugin = NULL;
