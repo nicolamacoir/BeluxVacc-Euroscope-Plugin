@@ -16,4 +16,6 @@ public:
     string Callsign;
     string Gate;
     time_t lastModified;
+    COLORREF color;
+    bool suggest25R;
 };

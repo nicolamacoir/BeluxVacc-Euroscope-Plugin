@@ -41,11 +41,28 @@ BeluxGatePlanner::BeluxGatePlanner(std::string data) {
         }
         else if (key == "gate") {
             this->Gate = value;
+            this->suggest25R = false;
+
+            if ((value.rfind("MIL", 0) == 0) || (value.rfind("GA", 0) == 0) || (value.rfind("9", 0) == 0)) {
+                // We detected a MIL/GA/CARGO stand
+                this->suggest25R = true;
+            }
+            else {
+                try {
+                    int ivalue = atoi(value.c_str());
+                    if (ivalue >= 120 && ivalue <= 174 && ivalue % 2 == 0) {
+                        //We detected APRON 1 north
+                        this->suggest25R = true;
+                    }
+                }
+                catch (exception& e) {}
+            }
         }
     } // end for pieces
 
     // Set the data age.
     this->lastModified = time(NULL);
+    this->color = NULL;
 }
 
 BeluxGatePlanner::~BeluxGatePlanner() {}

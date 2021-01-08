@@ -6,9 +6,9 @@
 #include <boost/asio/ssl.hpp>
 
 
-#define MY_PLUGIN_NAME      "BeluxPlugin"
-#define MY_PLUGIN_VERSION   "0.3.1"
-#define MY_PLUGIN_DEVELOPER "Belux vACC - Nicola Macoir"
+#define MY_PLUGIN_NAME      "Belux"
+#define MY_PLUGIN_VERSION   "0.4.0"
+#define MY_PLUGIN_DEVELOPER "Nicola Macoir for Belux vACC"
 #define MY_PLUGIN_COPYRIGHT "GPL v3"
 #define MY_PLUGIN_VIEW_AVISO  "Belux vACC"
 
@@ -32,9 +32,20 @@
 *  v0.3.1
 *    - GENERAL	: reformated the code to make https request more generalised
 *    - CFL		: Added extra checks to not take count for uncorrelated flightplans
+*	 - CFL		: Download initial METAR for liege
 *    - GATE		: Aircraft is also taken into account (for GA and MIL)
-*    - GATE		: Only fetch gate when i'm tracking the airplane OR i'm observing
+*	 - GATE		: Changed refresh threshold to 60 seconds
 * 
+*  v0.3.2
+*	- GENERAL	: changed name to Belux again
+*   - GATE		: change color when new gate is requested
+* 
+*  v0.3.3
+*	- CFL		: liege METAR download issue is fixed
+* 
+*  v0.4
+*	- GATE		: 25R suggestions marks an asterix next to gate
+*	- GATE		: API call simplified again
 */
 
 using namespace std;
@@ -49,22 +60,13 @@ public:
 	virtual void BeluxPlugin::OnNewMetarReceived(const char* sStation, const char* sFullMetar);
 	virtual void BeluxPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan);
 	virtual void BeluxPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan);
-	virtual void BeluxPlugin::OnGetTagItem(EuroScopePlugIn::CFlightPlan FlightPlan,
-		EuroScopePlugIn::CRadarTarget RadarTarget,
-		int ItemCode,
-		int TagData,
-		char sItemString[16],
-		int* pColorCode,
-		COLORREF* pRGB,
-		double* pFontSize);
-	//virtual bool BeluxPlugin::OnCompileCommand(const char* sCommandLine);
-	//virtual void BeluxPlugin::OnDoubleClickScreenObject(int ObjectType,
-	//	const char* sObjectId,
-	//	POINT Pt,
-	//	RECT Area,
-	//	int Button);
+	virtual void BeluxPlugin::OnGetTagItem(EuroScopePlugIn::CFlightPlan FlightPlan, EuroScopePlugIn::CRadarTarget RadarTarget, int ItemCode, int TagData, char sItemString[16], int* pColorCode, COLORREF* pRGB, double* pFontSize);
+	virtual void BeluxPlugin::OnFunctionCall(int FunctionId, const char* sItemString, POINT Pt, RECT Area);
 
 protected:
 	string BeluxPlugin::GetHttpsRequest(string host, string uri, string request);
-	BeluxGatePlanner BeluxPlugin::GetGateInfo(string callsign, string aircraft);
+	BeluxGatePlanner BeluxPlugin::GetGateInfo(string callsign);
+	string BeluxPlugin::GetAirportInfo(string airport);
+	void BeluxPlugin::ProcessMETAR(string airport, string metar);
+	void BeluxPlugin::printDebugMessage(string message);
 };
