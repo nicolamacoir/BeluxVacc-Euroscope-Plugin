@@ -7,7 +7,7 @@
 
 
 #define MY_PLUGIN_NAME      "Belux"
-#define MY_PLUGIN_VERSION   "0.4.0"
+#define MY_PLUGIN_VERSION   "0.4.2"
 #define MY_PLUGIN_DEVELOPER "Nicola Macoir for Belux vACC"
 #define MY_PLUGIN_COPYRIGHT "GPL v3"
 #define MY_PLUGIN_VIEW_AVISO  "Belux vACC"
@@ -46,6 +46,12 @@
 *  v0.4
 *	- GATE		: 25R suggestions marks an asterix next to gate
 *	- GATE		: API call simplified again
+* 
+*  v0.4.1
+*	- GATE		: Found bug when writing to scratchpad causing crash eventually
+* 
+*  v0.4.2
+*	- GATE		: Connecting with production API
 */
 
 using namespace std;

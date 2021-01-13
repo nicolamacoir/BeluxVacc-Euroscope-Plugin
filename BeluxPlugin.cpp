@@ -184,6 +184,11 @@ void BeluxPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget,
                     DisplayUserMessage("Belux Plugin", "GATE CHANGE", buffer, true, true, true, true, true);        
                     (*m_knownFlightInfo)[cs].color = RGB(50, 205, 50);
                 }
+
+                //When closer than 15NM and below 3500ft, insert into OP_TEXT
+                if (FlightPlan.GetDistanceToDestination() < 15 && FlightPlan.GetCorrelatedRadarTarget().GetPosition().GetPressureAltitude() < 3500) {
+                    FlightPlan.GetControllerAssignedData().SetScratchPadString((*m_knownFlightInfo)[cs].Gate.c_str());
+                }
             }
         }
         else {
@@ -202,11 +207,6 @@ void BeluxPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget,
 
             string gateItem = (*m_knownFlightInfo)[cs].Gate + ((*m_knownFlightInfo)[cs].suggest25R ? "*" : "");
             strcpy_s(sItemString, 8 , gateItem.c_str());
-
-            //When closer than 15NM and below 3500ft, insert into OP_TEXT
-            if (FlightPlan.GetDistanceToDestination() < 15 && FlightPlan.GetCorrelatedRadarTarget().GetPosition().GetPressureAltitude() < 3500) {
-                FlightPlan.GetControllerAssignedData().SetScratchPadString((*m_knownFlightInfo)[cs].Gate.c_str());
-            }
         }
         else {
             sItemString = "ERR";
@@ -234,7 +234,7 @@ void BeluxPlugin::printDebugMessage(string message) {
 
 BeluxGatePlanner BeluxPlugin::GetGateInfo(string callsign) {
     const string host = "api.beluxvacc.org";
-    const string uri = "/belux-gate-manager-api-develop/get_gate/";
+    const string uri = "/belux-gate-manager-api/get_gate/";
 
     // Form the request.
     std::stringstream request;
