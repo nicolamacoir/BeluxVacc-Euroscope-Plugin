@@ -24,6 +24,9 @@
     <ClCompile Include="BeluxGatePlanner.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="BeluxGateEntry.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="BeluxPlugin.def">
@@ -53,6 +56,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="BeluxGatePlanner.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="BeluxGateEntry.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

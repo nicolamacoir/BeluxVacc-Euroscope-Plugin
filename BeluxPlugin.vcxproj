@@ -195,6 +195,7 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="BeluxGateEntry.cpp" />
     <ClCompile Include="BeluxGatePlanner.cpp" />
     <ClCompile Include="BeluxPlugin.cpp" />
     <ClCompile Include="pch.cpp">
@@ -210,6 +211,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\Program Files (x86)\EuroScope\EuroScopePlugIn.h" />
+    <ClInclude Include="BeluxGateEntry.hpp" />
     <ClInclude Include="BeluxGatePlanner.hpp" />
     <ClInclude Include="BeluxPlugin.hpp" />
     <ClInclude Include="framework.h" />

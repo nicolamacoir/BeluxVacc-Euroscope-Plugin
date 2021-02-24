@@ -4,10 +4,11 @@
 #include <time.h>
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
+#include <boost/algorithm/string.hpp>
 
 
 #define MY_PLUGIN_NAME      "Belux"
-#define MY_PLUGIN_VERSION   "0.4.2"
+#define MY_PLUGIN_VERSION   "1.0.0"
 #define MY_PLUGIN_DEVELOPER "Nicola Macoir for Belux vACC"
 #define MY_PLUGIN_COPYRIGHT "GPL v3"
 #define MY_PLUGIN_VIEW_AVISO  "Belux vACC"
@@ -52,6 +53,26 @@
 * 
 *  v0.4.2
 *	- GATE		: Connecting with production API
+* 
+*  v0.5.0
+*	- GATE      : Complete metamorphose
+*   - GATE		: Efficiency update: Fetching all gates with one API call
+*   - GATE      : Works for ELLX arrivals
+*
+*  v0.5.1
+*   - GENERAL  : [Bugfix] Fixed large payload issue when fetching data from API
+* 
+*	v0.5.2
+* -   GENERAL  :  Added timeout option when fetching data from API
+* -   GENERAL  :  Added command to change timeout value
+* 
+* *	v0.6.0
+* -   GENERAL  :  Added version check at startup
+* -   GATES    :  Added command to change gate of A/C
+* 
+* *	v1.0.0 [Ready for public release]
+* -   GENERAL  :  timeout set to 1000
+* 
 */
 
 using namespace std;
@@ -68,11 +89,15 @@ public:
 	virtual void BeluxPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan);
 	virtual void BeluxPlugin::OnGetTagItem(EuroScopePlugIn::CFlightPlan FlightPlan, EuroScopePlugIn::CRadarTarget RadarTarget, int ItemCode, int TagData, char sItemString[16], int* pColorCode, COLORREF* pRGB, double* pFontSize);
 	virtual void BeluxPlugin::OnFunctionCall(int FunctionId, const char* sItemString, POINT Pt, RECT Area);
+	virtual bool BeluxPlugin::OnCompileCommand(const char* sCommandLine);
+	virtual void BeluxPlugin::OnTimer(int Counter);
 
 protected:
-	string BeluxPlugin::GetHttpsRequest(string host, string uri, string request);
-	BeluxGatePlanner BeluxPlugin::GetGateInfo(string callsign);
+	string BeluxPlugin::GetHttpsRequest(string host, string uri, string request, bool expect_long_json);
+	string BeluxPlugin::GetGateInfo();
 	string BeluxPlugin::GetAirportInfo(string airport);
+	string BeluxPlugin::GetLatestPluginVersion();
+	string BeluxPlugin::SwapGate(string callsign, string gate);
 	void BeluxPlugin::ProcessMETAR(string airport, string metar);
 	void BeluxPlugin::printDebugMessage(string message);
 };
